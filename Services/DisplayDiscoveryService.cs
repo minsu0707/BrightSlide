@@ -10,33 +10,24 @@ public sealed class DisplayDiscoveryService
     {
         var devices = new List<DisplayDevice>();
 
-        foreach (var internalController in InternalDisplayController.DiscoverAll())
-        {
-            devices.Add(new DisplayDevice
-            {
-                Id = internalController.Id,
-                Name = internalController.Name,
-                Kind = DisplayKind.Internal,
-                Controller = internalController,
-                Brightness = internalController.GetBrightness()
-            });
-        }
+        devices.AddRange(InternalDisplayController.DiscoverAll()
+            .Select(controller => CreateDevice(controller, DisplayKind.Internal)));
 
         _externalControllers = ExternalDisplayController.DiscoverAll();
-        foreach (var externalController in _externalControllers)
-        {
-            devices.Add(new DisplayDevice
-            {
-                Id = externalController.Id,
-                Name = externalController.Name,
-                Kind = DisplayKind.External,
-                Controller = externalController,
-                Brightness = externalController.GetBrightness()
-            });
-        }
+        devices.AddRange(_externalControllers
+            .Select(controller => CreateDevice(controller, DisplayKind.External)));
 
         return devices;
     }
 
     public void ReleaseExternalHandles() => ExternalDisplayController.ReleaseAll(_externalControllers);
+
+    private static DisplayDevice CreateDevice(IDisplayController controller, DisplayKind kind) => new()
+    {
+        Id = controller.Id,
+        Name = controller.Name,
+        Kind = kind,
+        Controller = controller,
+        Brightness = controller.GetBrightness()
+    };
 }

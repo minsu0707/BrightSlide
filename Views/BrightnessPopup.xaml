@@ -10,6 +10,65 @@
         ResizeMode="NoResize"
         SizeToContent="WidthAndHeight"
         Deactivated="OnDeactivated">
+    <Window.Resources>
+        <Style x:Key="BrightnessTrackFillStyle" TargetType="RepeatButton">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Height="6">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="4" ShadowDepth="1" Opacity="0.25" Direction="270" />
+                            </Border.Effect>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BrightnessTrackEmptyStyle" TargetType="RepeatButton" BasedOn="{StaticResource BrightnessTrackFillStyle}">
+            <Setter Property="Background" Value="#26FFFFFF" />
+        </Style>
+
+        <Style x:Key="BrightnessThumbStyle" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Ellipse Width="16" Height="16" Fill="White">
+                            <Ellipse.Effect>
+                                <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.4" />
+                            </Ellipse.Effect>
+                        </Ellipse>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BrightnessSliderStyle" TargetType="Slider">
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center">
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource BrightnessTrackFillStyle}" Command="Slider.DecreaseLarge" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource BrightnessTrackEmptyStyle}" Command="Slider.IncreaseLarge" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource BrightnessThumbStyle}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Border Background="#E6202020"
             CornerRadius="10"
             BorderBrush="#33FFFFFF"
@@ -41,7 +100,8 @@
                             </Grid>
                             <Slider Minimum="0" Maximum="100"
                                     Value="{Binding Brightness, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    IsSnapToTickEnabled="True" TickFrequency="1" />
+                                    IsSnapToTickEnabled="True" TickFrequency="1"
+                                    Style="{StaticResource BrightnessSliderStyle}" />
                         </StackPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

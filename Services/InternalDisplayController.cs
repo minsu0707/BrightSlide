@@ -10,6 +10,12 @@ public sealed class InternalDisplayController : IDisplayController
 {
     private readonly string _instanceName;
 
+    // Cached WMI handles: bound once to the instance's ManagementPath so every
+    // Get/Set reuses the same object instead of re-running a SELECT query
+    // (which otherwise adds tens of ms of overhead per drag tick).
+    private readonly ManagementObject _brightnessObject;
+    private readonly ManagementObject _methodsObject;
+
     public string Id => _instanceName;
     public string Name { get; }
 
@@ -17,6 +23,12 @@ public sealed class InternalDisplayController : IDisplayController
     {
         _instanceName = instanceName;
         Name = name;
+
+        var escaped = Escape(instanceName);
+        _brightnessObject = new ManagementObject("root\\WMI",
+            $"WmiMonitorBrightness.InstanceName='{escaped}'", null);
+        _methodsObject = new ManagementObject("root\\WMI",
+            $"WmiMonitorBrightnessMethods.InstanceName='{escaped}'", null);
     }
 
     public static IReadOnlyList<InternalDisplayController> DiscoverAll()
@@ -44,34 +56,17 @@ public sealed class InternalDisplayController : IDisplayController
 
     public int GetBrightness()
     {
-        using var searcher = new ManagementObjectSearcher("root\\WMI",
-            $"SELECT * FROM WmiMonitorBrightness WHERE InstanceName = '{Escape(_instanceName)}'");
-        foreach (ManagementBaseObject instance in searcher.Get())
-        {
-            using (instance)
-            {
-                return Convert.ToInt32(instance["CurrentBrightness"]);
-            }
-        }
-        return 0;
+        _brightnessObject.Get();
+        return Convert.ToInt32(_brightnessObject["CurrentBrightness"]);
     }
 
     public void SetBrightness(int percent)
     {
         percent = Math.Clamp(percent, 0, 100);
-        using var searcher = new ManagementObjectSearcher("root\\WMI",
-            $"SELECT * FROM WmiMonitorBrightnessMethods WHERE InstanceName = '{Escape(_instanceName)}'");
-        foreach (ManagementObject instance in searcher.Get())
-        {
-            using (instance)
-            {
-                var inParams = instance.GetMethodParameters("WmiSetBrightness");
-                inParams["Timeout"] = 0;
-                inParams["Brightness"] = (byte)percent;
-                instance.InvokeMethod("WmiSetBrightness", inParams, null);
-            }
-            return;
-        }
+        var inParams = _methodsObject.GetMethodParameters("WmiSetBrightness");
+        inParams["Timeout"] = 0;
+        inParams["Brightness"] = (byte)percent;
+        _methodsObject.InvokeMethod("WmiSetBrightness", inParams, null);
     }
 
     private static string Escape(string value) => value.Replace("'", "''").Replace("\\", "\\\\");

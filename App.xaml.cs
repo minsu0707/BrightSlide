@@ -1,6 +1,6 @@
-﻿using System.Runtime.InteropServices;
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
+using BrightSlide.Interop;
 using BrightSlide.Models;
 using BrightSlide.Services;
 using BrightSlide.Views;
@@ -23,6 +23,13 @@ public partial class App : Application
         _devices = _discoveryService.DiscoverAll();
 
         var contextMenu = new ContextMenu();
+
+        var startupItem = new MenuItem { Header = "시작 시 자동 실행", IsCheckable = true, IsChecked = StartupManager.IsEnabled };
+        startupItem.Click += (_, _) => StartupManager.IsEnabled = startupItem.IsChecked;
+        contextMenu.Items.Add(startupItem);
+
+        contextMenu.Items.Add(new Separator());
+
         var exitItem = new MenuItem { Header = "종료" };
         exitItem.Click += (_, _) => Shutdown();
         contextMenu.Items.Add(exitItem);
@@ -34,6 +41,7 @@ public partial class App : Application
             ContextMenu = contextMenu
         };
         _taskbarIcon.TrayLeftMouseUp += OnTrayLeftMouseUp;
+        _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
 
         _popup = new BrightnessPopup(_devices);
     }
@@ -48,7 +56,7 @@ public partial class App : Application
             return;
         }
 
-        GetCursorPos(out var cursor);
+        CursorNativeMethods.GetCursorPos(out var cursor);
         _popup.ShowNear(new Point(cursor.X, cursor.Y));
     }
 
@@ -58,14 +66,4 @@ public partial class App : Application
         _discoveryService?.ReleaseExternalHandles();
         base.OnExit(e);
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out POINT lpPoint);
 }
