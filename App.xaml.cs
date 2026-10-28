@@ -36,7 +36,7 @@ public partial class App : Application
 
         _taskbarIcon = new TaskbarIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadTrayIcon(),
             ToolTipText = "BrightSlide — 모니터 밝기 조절",
             ContextMenu = contextMenu
         };
@@ -58,6 +58,15 @@ public partial class App : Application
 
         CursorNativeMethods.GetCursorPos(out var cursor);
         _popup.ShowNear(new Point(cursor.X, cursor.Y));
+    }
+
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        using var stream = assembly.GetManifestResourceStream("BrightSlide.Assets.brightslide.ico");
+        return stream is not null
+            ? new System.Drawing.Icon(stream)
+            : System.Drawing.SystemIcons.Application;
     }
 
     protected override void OnExit(ExitEventArgs e)
