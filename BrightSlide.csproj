@@ -12,7 +12,7 @@
     <Description>드래그 한 번으로 모니터 밝기를 조절하는 Windows 전용 트레이 유틸리티</Description>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <Version>0.2.2</Version>
+    <Version>0.3.0</Version>
     <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <ApplicationIcon>Assets\brightslide.ico</ApplicationIcon>
