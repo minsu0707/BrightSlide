@@ -11,6 +11,7 @@ import (
 const (
 	popupClass      = "BrightSlidePopup"
 	deactivateGrace = 250 * time.Millisecond
+	graceTimerID    = 1
 	supersample     = 4
 
 	colBg         = 0x202020
@@ -36,6 +37,10 @@ type popupState struct {
 	shownAt             time.Time
 	drag                int
 	titleFont, bodyFont uintptr
+
+	// Drawing buffers live as long as the popup so a drag doesn't allocate GDI objects per mouse move.
+	backDC, backBmp, backOld uintptr
+	ssDC, ssBmp, ssOld       uintptr
 }
 
 func (p *popupState) s(n float64) int32 { return int32(math.Round(n * p.scale)) }
@@ -79,7 +84,7 @@ func showPopup() {
 	if app.popup != nil {
 		return
 	}
-	if app.needRescan {
+	if app.needRescan.Load() {
 		rescanDisplays()
 	}
 
@@ -124,8 +129,11 @@ func showPopup() {
 	dwmSetWindowAttribute(p.hwnd, 34, &border)
 
 	showWindow(p.hwnd, swShow)
-	setForegroundWindow(p.hwnd)
+	bringToForeground(p.hwnd)
 	p.shownAt = time.Now()
+	// Deactivation inside the grace period is ignored, so check once more afterwards: if the
+	// popup never got (or already lost) focus, nothing else would ever dismiss it.
+	setTimer(p.hwnd, graceTimerID, uint32(deactivateGrace/time.Millisecond)+50)
 }
 
 func hidePopup() {
@@ -135,11 +143,41 @@ func hidePopup() {
 	}
 	app.popup = nil
 	releaseCapture()
+	killTimer(p.hwnd, graceTimerID)
 	destroyWindow(p.hwnd)
+	p.freeBuffers()
 	deleteObject(p.titleFont)
 	deleteObject(p.bodyFont)
 	app.lastHide = time.Now()
-	trimMemory()
+	trimMemoryAsync()
+}
+
+func (p *popupState) ensureBuffers(hdc uintptr) {
+	if p.backDC != 0 {
+		return
+	}
+	p.backDC = createCompatibleDC(hdc)
+	p.backBmp = createCompatibleBitmap(hdc, p.w, p.h)
+	p.backOld = selectObject(p.backDC, p.backBmp)
+
+	sliderW := p.w - 2*p.pad
+	p.ssDC = createCompatibleDC(hdc)
+	p.ssBmp = createCompatibleBitmap(hdc, sliderW*supersample, p.sliderH*supersample)
+	p.ssOld = selectObject(p.ssDC, p.ssBmp)
+}
+
+func (p *popupState) freeBuffers() {
+	if p.backDC != 0 {
+		selectObject(p.backDC, p.backOld)
+		deleteObject(p.backBmp)
+		deleteDC(p.backDC)
+	}
+	if p.ssDC != 0 {
+		selectObject(p.ssDC, p.ssOld)
+		deleteObject(p.ssBmp)
+		deleteDC(p.ssDC)
+	}
+	p.backDC, p.ssDC = 0, 0
 }
 
 func popupProc(hwnd, m, wp, lp uintptr) uintptr {
@@ -185,6 +223,14 @@ func popupProc(hwnd, m, wp, lp uintptr) uintptr {
 			hidePopup()
 		}
 		return 0
+	case wmTimer:
+		if wp == graceTimerID {
+			killTimer(hwnd, graceTimerID)
+			if getForegroundWindow() != hwnd && !bringToForeground(hwnd) {
+				hidePopup()
+			}
+			return 0
+		}
 	}
 	return defWindowProc(hwnd, m, wp, lp)
 }
@@ -201,7 +247,9 @@ func (p *popupState) update(i int, mouseX int32) {
 	}
 	d.value = v
 	d.wr.set(v)
-	invalidateRect(p.hwnd)
+	r := p.rows[i]
+	row := rect{0, r.nameY, p.w, r.sliderY + p.sliderH}
+	invalidateRect(p.hwnd, &row)
 }
 
 func fillSolid(dc uintptr, r rect, color uint32) {
@@ -215,9 +263,8 @@ func (p *popupState) paint(hwnd uintptr) {
 	hdc := beginPaint(hwnd, &ps)
 	defer endPaint(hwnd, &ps)
 
-	mem := createCompatibleDC(hdc)
-	bmp := createCompatibleBitmap(hdc, p.w, p.h)
-	oldBmp := selectObject(mem, bmp)
+	p.ensureBuffers(hdc)
+	mem := p.backDC
 	fillSolid(mem, rect{0, 0, p.w, p.h}, colBg)
 	setBkMode(mem, transparentBk)
 
@@ -245,17 +292,12 @@ func (p *popupState) paint(hwnd uintptr) {
 	selectObject(mem, oldFont)
 
 	bitBlt(hdc, 0, 0, p.w, p.h, mem, 0, 0, srcCopy)
-	selectObject(mem, oldBmp)
-	deleteObject(bmp)
-	deleteDC(mem)
 }
 
 // drawSlider renders at supersample x and averages down so the capsule and thumb are smooth.
 func (p *popupState) drawSlider(dst uintptr, x, y, w, h int32, value int) {
 	const ss = supersample
-	sdc := createCompatibleDC(dst)
-	sbmp := createCompatibleBitmap(dst, w*ss, h*ss)
-	oldBmp := selectObject(sdc, sbmp)
+	sdc := p.ssDC
 	fillSolid(sdc, rect{0, 0, w * ss, h * ss}, colBg)
 	oldPen := selectObject(sdc, getStockObject(nullPen))
 
@@ -283,7 +325,4 @@ func (p *popupState) drawSlider(dst uintptr, x, y, w, h int32, value int) {
 	stretchBlt(dst, x, y, w, h, sdc, 0, 0, w*ss, h*ss, srcCopy)
 
 	selectObject(sdc, oldPen)
-	selectObject(sdc, oldBmp)
-	deleteObject(sbmp)
-	deleteDC(sdc)
 }

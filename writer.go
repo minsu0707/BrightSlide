@@ -118,10 +118,7 @@ func (w *writer) loop(sent int) {
 				attempts = verifyAttempts
 				continue
 			}
-			if attempts == 0 {
-				break
-			}
-			idle, quit := w.waitIdle(t)
+			idle, quit := w.waitIdle(t, sent)
 			if quit {
 				return
 			}
@@ -131,21 +128,28 @@ func (w *writer) loop(sent int) {
 			if cur, ok := w.d.ctl.Get(); ok && abs(cur-w.d.ctl.Effective(t)) <= 1 {
 				break
 			}
+			if attempts == 0 {
+				// Still not what we asked for after every retry: the monitor handle may be stale.
+				app.needRescan.Store(true)
+				break
+			}
 			attempts--
+			sent = t
 			w.d.ctl.Set(t)
 		}
 	}
 }
 
-// waitIdle returns idle=false as soon as a newer slider value shows up.
-func (w *writer) waitIdle(t int) (idle, quit bool) {
+// waitIdle returns idle=false as soon as the slider moves again or the value we last sent is
+// no longer the one we want (the look-ahead overshoot has to be corrected).
+func (w *writer) waitIdle(t, sent int) (idle, quit bool) {
 	for i := 0; i < settleSteps; i++ {
 		select {
 		case <-time.After(settleStep):
 		case <-w.quit:
 			return false, true
 		}
-		if int(w.target.Load()) != t {
+		if int(w.target.Load()) != t || w.aim(t) != sent {
 			return false, false
 		}
 	}

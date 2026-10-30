@@ -48,8 +48,9 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
-; Unquoted on purpose: StartupManager.IsEnabled compares this value to the exe path verbatim.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: "{app}\{#AppExe}"; Tasks: startup
+; Quoted so paths containing spaces (e.g. a user name with a space) still launch correctly;
+; the app accepts the value with or without quotes.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExe}"""; Tasks: startup
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{#AppName} 지금 실행"; Flags: nowait postinstall skipifsilent
@@ -57,9 +58,23 @@ Filename: "{app}\{#AppExe}"; Description: "{#AppName} 지금 실행"; Flags: now
 [Code]
 procedure StopRunningApp;
 var
-  ResultCode: Integer;
+  ResultCode, I: Integer;
 begin
+  // Ask the running app to quit itself first so it removes its tray icon and releases the
+  // monitor handles; only force-kill if it is still there (or is an older build without this window).
+  if FindWindowByClassName('BrightSlideTray') <> 0 then
+  begin
+    PostMessage(FindWindowByClassName('BrightSlideTray'), 16, 0, 0); // WM_CLOSE
+    for I := 1 to 30 do
+    begin
+      if FindWindowByClassName('BrightSlideTray') = 0 then Break;
+      Sleep(100);
+    end;
+    Sleep(300);
+    Log('BrightSlide was asked to close; tray window gone: ' + IntToStr(Ord(FindWindowByClassName('BrightSlideTray') = 0)));
+  end;
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Log('taskkill exit code (128 = nothing left to kill): ' + IntToStr(ResultCode));
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

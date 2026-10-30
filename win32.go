@@ -35,6 +35,12 @@ var (
 	pLoadCursor          = user32.NewProc("LoadCursorW")
 	pLoadImage           = user32.NewProc("LoadImageW")
 	pInvalidateRect      = user32.NewProc("InvalidateRect")
+	pSetTimer            = user32.NewProc("SetTimer")
+	pKillTimer           = user32.NewProc("KillTimer")
+	pGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+	pGetWindowThreadPID  = user32.NewProc("GetWindowThreadProcessId")
+	pAttachThreadInput   = user32.NewProc("AttachThreadInput")
+	pGetCurrentThreadID  = kernel32.NewProc("GetCurrentThreadId")
 	pBeginPaint          = user32.NewProc("BeginPaint")
 	pEndPaint            = user32.NewProc("EndPaint")
 	pFillRect            = user32.NewProc("FillRect")
@@ -109,6 +115,10 @@ const (
 	wmLButtonUp     = 0x0202
 	wmRButtonUp     = 0x0205
 	wmApp           = 0x8000
+	wmClose         = 0x0010
+	wmTimer         = 0x0113
+	wmPowerBroadcast = 0x0218
+	wmLButtonDblClk = 0x0203
 
 	wsPopup        = 0x80000000
 	wsExToolWindow = 0x00000080
@@ -309,7 +319,57 @@ func loadImage(inst, name uintptr, typ uint32, cx, cy int32, flags uint32) uintp
 	return r
 }
 
-func invalidateRect(hwnd uintptr) { syscall.SyscallN(pInvalidateRect.Addr(), hwnd, 0, 0) }
+func invalidateRect(hwnd uintptr, r *rect) {
+	syscall.SyscallN(pInvalidateRect.Addr(), hwnd, uintptr(unsafe.Pointer(r)), 0)
+}
+
+func setTimer(hwnd, id uintptr, ms uint32) {
+	syscall.SyscallN(pSetTimer.Addr(), hwnd, id, uintptr(ms), 0)
+}
+
+func killTimer(hwnd, id uintptr) { syscall.SyscallN(pKillTimer.Addr(), hwnd, id) }
+
+func getForegroundWindow() uintptr {
+	r, _, _ := syscall.SyscallN(pGetForegroundWindow.Addr())
+	return r
+}
+
+func getWindowThreadID(hwnd uintptr) uint32 {
+	r, _, _ := syscall.SyscallN(pGetWindowThreadPID.Addr(), hwnd, 0)
+	return uint32(r)
+}
+
+func getCurrentThreadID() uint32 {
+	r, _, _ := syscall.SyscallN(pGetCurrentThreadID.Addr())
+	return uint32(r)
+}
+
+func attachThreadInput(from, to uint32, attach bool) bool {
+	r, _, _ := syscall.SyscallN(pAttachThreadInput.Addr(), uintptr(from), uintptr(to), b2u(attach))
+	return r != 0
+}
+
+// bringToForeground activates hwnd. A plain SetForegroundWindow is refused when another
+// process owns the foreground and we did not just receive input, so retry once while briefly
+// sharing the foreground thread's input queue.
+func bringToForeground(hwnd uintptr) bool {
+	setForegroundWindow(hwnd)
+	if getForegroundWindow() == hwnd {
+		return true
+	}
+	fg := getForegroundWindow()
+	if fg == 0 {
+		return false
+	}
+	me, other := getCurrentThreadID(), getWindowThreadID(fg)
+	if other == 0 || other == me {
+		return false
+	}
+	attachThreadInput(me, other, true)
+	setForegroundWindow(hwnd)
+	attachThreadInput(me, other, false)
+	return getForegroundWindow() == hwnd
+}
 
 func beginPaint(hwnd uintptr, ps *paintStruct) uintptr {
 	r, _, _ := syscall.SyscallN(pBeginPaint.Addr(), hwnd, uintptr(unsafe.Pointer(ps)))

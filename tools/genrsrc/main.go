@@ -24,12 +24,21 @@ type image struct {
 func main() {
 	ico, err := os.ReadFile("Assets/brightslide.ico")
 	check(err)
+	if len(ico) < 6 || binary.LittleEndian.Uint16(ico[0:]) != 0 || binary.LittleEndian.Uint16(ico[2:]) != 1 {
+		fail("Assets/brightslide.ico is not an ICO file")
+	}
 	count := int(binary.LittleEndian.Uint16(ico[4:]))
+	if count == 0 || 6+16*count > len(ico) {
+		fail("ICO header is truncated or has no images")
+	}
 	var images []image
 	for i := 0; i < count; i++ {
 		e := ico[6+16*i:]
 		size := binary.LittleEndian.Uint32(e[8:])
 		offset := binary.LittleEndian.Uint32(e[12:])
+		if uint64(offset)+uint64(size) > uint64(len(ico)) {
+			fail(fmt.Sprintf("ICO image %d points outside the file", i))
+		}
 		images = append(images, image{e[0], e[1], e[2], e[3], binary.LittleEndian.Uint16(e[4:]), binary.LittleEndian.Uint16(e[6:]), ico[offset : offset+size]})
 	}
 
@@ -154,7 +163,11 @@ func main() {
 
 func check(err error) {
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		fail(err.Error())
 	}
+}
+
+func fail(msg string) {
+	fmt.Fprintln(os.Stderr, "genrsrc:", msg+" (run from the repo root)")
+	os.Exit(1)
 }

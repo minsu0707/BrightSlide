@@ -62,8 +62,8 @@ func exePath() string {
 	return p
 }
 
-// autostartEnabled compares the Run value to the exe path verbatim (unquoted), the same
-// convention the installer writes, so a value created by either side is recognised.
+// autostartEnabled accepts the Run value with or without surrounding quotes, so values written
+// by older builds (unquoted) and by this one (quoted, safe for paths with spaces) both count.
 func autostartEnabled() bool {
 	h, ok := regOpen(hkeyCurrentUser, runKeyPath, keyRead)
 	if !ok {
@@ -75,7 +75,7 @@ func autostartEnabled() bool {
 		return false
 	}
 	u := unsafe.Slice((*uint16)(unsafe.Pointer(&data[0])), len(data)/2)
-	return strings.EqualFold(syscall.UTF16ToString(u), exePath())
+	return strings.EqualFold(strings.Trim(syscall.UTF16ToString(u), `"`), exePath())
 }
 
 func setAutostart(enable bool) {
@@ -88,7 +88,7 @@ func setAutostart(enable bool) {
 			return
 		}
 		defer regClose(h)
-		val, _ := syscall.UTF16FromString(exePath())
+		val, _ := syscall.UTF16FromString(`"` + exePath() + `"`)
 		syscall.SyscallN(pRegSetValueEx.Addr(), h, uintptr(unsafe.Pointer(u16(runValueName))), 0, regSZ,
 			uintptr(unsafe.Pointer(&val[0])), uintptr(len(val)*2))
 		return

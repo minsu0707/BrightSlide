@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -24,13 +25,22 @@ var app struct {
 	displays       []*display
 	popup          *popupState
 	lastHide       time.Time
-	needRescan     bool
+	suppressUp     bool        // the pending tray button-up belongs to a click that just closed the popup
+	needRescan     atomic.Bool // display handles may be stale; rediscover before the next popup
 	taskbarCreated uint32
 }
 
 func trimMemory() {
 	debug.FreeOSMemory()
 	trimWorkingSet()
+}
+
+// trimMemoryAsync keeps the forced GC and working-set trim off the UI thread's hot path.
+func trimMemoryAsync() {
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		trimMemory()
+	}()
 }
 
 func main() {
@@ -44,7 +54,6 @@ func main() {
 
 	app.hInst = getModuleHandle()
 	app.taskbarCreated = registerWindowMessage(u16("TaskbarCreated"))
-	app.displays = discoverAll()
 
 	registerPopupClass()
 	wc := wndClassEx{
@@ -62,6 +71,9 @@ func main() {
 		app.icon = loadImage(0, idiApplication, imageIcon, cx, cy, 0x8000) // LR_SHARED
 	}
 	addTrayIcon()
+
+	// Probing monitors over DDC/CI can take a while; the tray icon is already up by now.
+	app.displays = discoverAll()
 
 	// Developer aid: open the popup right away instead of waiting for a tray click.
 	if len(os.Args) > 1 && os.Args[1] == "--show" {
@@ -104,21 +116,37 @@ func removeTrayIcon() {
 func rescanDisplays() {
 	closeDisplays(app.displays)
 	app.displays = discoverAll()
-	app.needRescan = false
+	app.needRescan.Store(false)
 }
+
+const (
+	pbtApmResumeSuspend   = 0x0007
+	pbtApmResumeAutomatic = 0x0012
+)
 
 func trayProc(hwnd, m, wp, lp uintptr) uintptr {
 	switch {
 	case m == wmTray:
 		switch lp {
+		case wmLButtonDown:
+			onTrayButtonDown()
 		case wmLButtonUp:
-			onTrayClick()
+			onTrayButtonUp()
 		case wmRButtonUp:
 			showTrayMenu()
 		}
 		return 0
 	case m == wmDisplayChange:
-		app.needRescan = true
+		app.needRescan.Store(true)
+		return 0
+	case m == wmPowerBroadcast:
+		if wp == pbtApmResumeSuspend || wp == pbtApmResumeAutomatic {
+			app.needRescan.Store(true) // monitors may have dropped their DDC state while asleep
+		}
+		return 1
+	case m == wmClose:
+		// Graceful shutdown used by the installer: drop the tray icon, then leave the message loop.
+		postQuitMessage(0)
 		return 0
 	case uint32(m) == app.taskbarCreated && app.taskbarCreated != 0:
 		addTrayIcon()
@@ -127,13 +155,19 @@ func trayProc(hwnd, m, wp, lp uintptr) uintptr {
 	return defWindowProc(hwnd, m, wp, lp)
 }
 
-func onTrayClick() {
+// Pressing the tray icon steals focus from the popup, so by the time the button comes up the
+// popup is already gone. Remember on button-down that this click closed it, and swallow the
+// matching button-up however long the press lasts.
+func onTrayButtonDown() {
+	app.suppressUp = app.popup != nil || time.Since(app.lastHide) < 200*time.Millisecond
 	if app.popup != nil {
 		hidePopup()
-		return
 	}
-	// The click that just dismissed the popup (focus loss) must not reopen it.
-	if time.Since(app.lastHide) < 300*time.Millisecond {
+}
+
+func onTrayButtonUp() {
+	if app.suppressUp {
+		app.suppressUp = false
 		return
 	}
 	showPopup()

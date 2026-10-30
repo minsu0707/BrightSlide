@@ -19,6 +19,9 @@ $version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage | Out-Null
 $env:CGO_ENABLED = '0'
+# The icon resource is rsrc_windows_amd64.syso; any other target would silently build without it.
+$env:GOOS = 'windows'
+$env:GOARCH = 'amd64'
 Push-Location $root
 try {
     & $go build -trimpath -ldflags '-s -w -H=windowsgui' -o (Join-Path $stage 'BrightSlide.exe') .
