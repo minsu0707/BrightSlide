@@ -7,7 +7,8 @@ macOS 메뉴바의 밝기 슬라이더처럼, 트레이 아이콘 클릭 한 번
 
 - 트레이 아이콘을 누르면 뜨는 팝업에서 슬라이더를 드래그해 밝기 조절
 - 노트북 내장 화면과 외장 모니터를 모두 지원하고, 디스플레이마다 슬라이더가 하나씩 표시
-- 관리자 권한 없이 설치, .NET 설치도 필요 없음
+- 아주 가벼움: 실행 파일 약 2MB, 평소 메모리 사용량(작업 집합) 약 1~2MB, 가만히 있을 때 CPU 0%
+- 관리자 권한 없이 설치, .NET 같은 런타임 설치도 필요 없음
 
 ---
 
@@ -69,7 +70,7 @@ macOS 메뉴바의 밝기 슬라이더처럼, 트레이 아이콘 클릭 한 번
 
 | 종류 | 제어 방식 | 비고 |
 |---|---|---|
-| 노트북 내장 디스플레이 | Windows 전원 관리(WMI) | 대부분의 노트북에서 동작 |
+| 노트북 내장 디스플레이 | Windows 비디오 밝기 제어(`\\.\LCD`) | 실제 노트북에서는 아직 검증되지 않음 (아래 제한 사항 참고) |
 | 외장 모니터 | DDC/CI | 모니터와 연결 케이블(HDMI/DP)이 DDC/CI를 지원해야 동작 |
 
 디스플레이는 실행 시 자동으로 감지되며, 가능한 경우 실제 모니터 모델명을 표시합니다.
@@ -80,6 +81,7 @@ macOS 메뉴바의 밝기 슬라이더처럼, 트레이 아이콘 클릭 한 번
 
 | 증상 | 원인 / 대처 |
 |---|---|
+| 노트북 내장 화면이 목록에 나오지 않거나 조절되지 않음 | 내장 디스플레이 지원은 Windows 노트북에서 검증되지 않았음. 문제가 있으면 이슈로 알려주세요 |
 | USB-C 허브로 연결한 외장 모니터의 밝기가 조절되지 않음 | 허브를 거치면 DDC/CI 신호가 전달되지 않을 수 있음 |
 | 외장 모니터가 내장 화면보다 느리게 따라옴 | DDC/CI 통신 속도(모니터 펌웨어 한계, 명령 1회당 수십 ms) 때문. 빠르게 드래그해도 멈추면 최종 값으로 맞춰짐 |
 | 밝기가 매우 낮은 구간(1~8%)에서 값이 건너뜀 | 일부 모니터가 이 구간에서 비선형적으로 동작해서 보정해 회피함 |
@@ -88,25 +90,35 @@ macOS 메뉴바의 밝기 슬라이더처럼, 트레이 아이콘 클릭 한 번
 
 ## 직접 빌드하기
 
-개발자용입니다. **.NET 9 SDK**가 필요합니다.
+개발자용입니다. Go로 작성되어 있고 외부 라이브러리나 C 컴파일러는 필요 없습니다. **Go 1.27 이상**이 필요합니다.
 
-**소스에서 실행**
+```powershell
+winget install -e --id GoLang.Go --source winget
+```
+
+**소스에서 빌드해 실행**
 
 ```powershell
 git clone https://github.com/minsu0707/BrightSlide.git
 cd BrightSlide
-dotnet run
+$env:CGO_ENABLED = '0'
+go build -trimpath -ldflags '-s -w -H=windowsgui' -o BrightSlide.exe .
+.\BrightSlide.exe
 ```
 
-**단독 실행 파일 만들기**
+개발할 때 `--show` 옵션을 주면 트레이 클릭 없이 팝업이 바로 열립니다.
+
+**아이콘 리소스 다시 만들기**
+
+`Assets\brightslide.ico`를 바꿨다면 exe에 들어가는 `rsrc_windows_amd64.syso`를 다시 생성하세요.
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+go run ./tools/genrsrc
 ```
 
 **설치 프로그램 만들기**
 
-[Inno Setup 6](https://jrsoftware.org/isinfo.php)을 설치한 뒤 다음을 실행하세요. 빌드와 패키징이 한 번에 처리되며 결과물은 `installer\Output\`에 생성됩니다.
+[Inno Setup 6](https://jrsoftware.org/isinfo.php)을 설치한 뒤 다음을 실행하세요. 빌드와 패키징이 한 번에 처리되며, 결과물(설치 프로그램과 단독 exe)은 `installer\Output\`에 생성됩니다. 버전은 루트의 `VERSION` 파일에서 읽습니다.
 
 ```powershell
 winget install -e --id JRSoftware.InnoSetup --source winget

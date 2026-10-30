@@ -10,14 +10,24 @@ $iscc = @(
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { throw 'Inno Setup 6 not found. Install it with: winget install -e --id JRSoftware.InnoSetup --source winget' }
 
-$version = ([xml](Get-Content (Join-Path $root 'BrightSlide.csproj'))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+$go = (Get-Command go -ErrorAction SilentlyContinue).Source
+if (-not $go) { $go = "$env:ProgramFiles\Go\bin\go.exe" }
+if (-not (Test-Path $go)) { throw 'Go not found. Install it with: winget install -e --id GoLang.Go --source winget' }
+
+$version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-dotnet publish (Join-Path $root 'BrightSlide.csproj') -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $stage
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+New-Item -ItemType Directory -Path $stage | Out-Null
+$env:CGO_ENABLED = '0'
+Push-Location $root
+try {
+    & $go build -trimpath -ldflags '-s -w -H=windowsgui' -o (Join-Path $stage 'BrightSlide.exe') .
+    if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
+} finally { Pop-Location }
 
 & $iscc "/DAppVersion=$version" "/DStageDir=$stage" (Join-Path $PSScriptRoot 'BrightSlide.iss')
 if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
 
+Copy-Item (Join-Path $stage 'BrightSlide.exe') (Join-Path $PSScriptRoot "Output\BrightSlide-$version-win-x64.exe") -Force
 Write-Host "Built: $(Join-Path $PSScriptRoot "Output\BrightSlide-Setup-$version.exe")"
+Write-Host "Built: $(Join-Path $PSScriptRoot "Output\BrightSlide-$version-win-x64.exe")"
