@@ -4,7 +4,10 @@ macOS 메뉴바의 밝기 슬라이더처럼, 트레이 아이콘 클릭 한 번
 
 ## 다운로드
 
-[Releases](https://github.com/minsu0707/BrightSlide/releases)에서 최신 버전의 `BrightSlide-x.x.x-win-x64.exe`를 받아 바로 실행하세요. 설치 과정 없이 더블클릭하면 바로 동작합니다 (.NET 설치 불필요).
+[Releases](https://github.com/minsu0707/BrightSlide/releases)에서 원하는 형태를 받으세요 (.NET 설치 불필요).
+
+- **설치 프로그램** `BrightSlide-Setup-x.x.x.exe`: 관리자 권한 없이 현재 사용자 계정에 설치되며, 시작 메뉴 등록과 선택적 자동 실행 설정을 지원하고 Windows의 "앱 제거"에서 삭제할 수 있습니다. 새 버전 설치 시 기존 버전 위에 덮어씁니다.
+- **단독 실행 파일** `BrightSlide-x.x.x-win-x64.exe`: 설치 없이 더블클릭하면 바로 동작합니다.
 
 ## 사용법
 
@@ -31,7 +34,6 @@ macOS 메뉴바의 밝기 슬라이더처럼, 트레이 아이콘 클릭 한 번
 
 ## 알려진 제한 사항
 
-- 설치형 인스톨러는 아직 없고, 실행 파일(.exe) 형태로만 배포됩니다.
 - USB-C 허브를 경유해 연결된 외장 모니터는 DDC/CI 신호가 전달되지 않아 밝기 조절이 안 될 수 있습니다.
 - 외장 모니터는 DDC/CI 통신 속도(모니터 펌웨어 한계, 보통 명령 1회당 수십 ms) 때문에 내장 디스플레이보다 밝기 변경이 느리게 느껴질 수 있습니다.
 - 일부 모니터는 밝기 값이 매우 낮은 구간에서 비선형적으로 동작할 수 있어, 해당 구간은 보정해서 회피하고 있습니다.
@@ -53,3 +55,10 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ```
 
 .NET 9 SDK가 필요합니다.
+
+설치 프로그램을 만들려면 [Inno Setup 6](https://jrsoftware.org/isinfo.php)을 설치한 뒤 다음을 실행하세요. 빌드와 패키징이 한 번에 처리되며 결과물은 `installer\Output\`에 생성됩니다.
+
+```powershell
+winget install -e --id JRSoftware.InnoSetup --source winget
+.\installer\build-installer.ps1
+```

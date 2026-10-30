@@ -4,4 +4,6 @@ obj/
 .vs/
 run.log
 publish/
+installer/stage/
+installer/Output/
 *.exe
